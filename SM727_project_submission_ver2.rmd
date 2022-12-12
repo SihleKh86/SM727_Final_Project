@@ -1,0 +1,233 @@
+---
+title: "Fundamentals of Computing and Data Display"
+author: "Sihle Khanyile & Sara Finnbogadottir"
+date: "`r Sys.Date()`"
+output:
+  html_document:
+    toc: yes
+    df_print: paged
+  pdf_document:
+    toc: yes
+    df_print: kable
+subtitle: Term paper template
+references:
+- id: Wickham2014
+  title: Tidy Data
+  author:
+  - family: Wickham
+    given: Hadley
+  container-title: Journal of Statistical Software
+  volume: 59
+  issue: 10
+  page: "1-23"
+  type: "article-journal"
+  issued:
+    year: 2014
+- id: Baumer2017
+  title: Modern Data Science with R
+  author:
+  - family: Baumer
+    given: Benjamin S.
+  - family: Kaplan
+    given: Daniel T.
+  - family: Horton
+    given: Nicholas J.
+  type: book
+  publisher: Chapman \& Hall/CRC Press.
+  issued:
+    year: 2017
+---
+
+```{r, include = FALSE}
+library(knitr)
+library(tidyverse)
+library(haven)
+library(janitor)
+library(questionr)
+library(ggplot2)
+library(gtrendsR)
+library(gridExtra)
+```
+
+## Introduction
+
+The potential of internet search data as an indicator for different economic activities has been demonstrated at least in the advanced economies using Google search queries (McLaren & Shanbhogue 2011). What makes internet search data so attractive is the timeliness advantage it has over traditional government surveys that are released with a time lag (Choi & Varian 2009a). The quality limitations of the internet search data has been noted by other scholars such as Amaya et al (2020) however this is beyond the scope of this paper.
+
+McLaren & Shanbhogue (2011) examined internet search data and whether it contained information over and above survey indicators for the UK housing and labor markets. They found that Google search queries present relevant information that could explain changes in unemployment and that in addition to existing surveys, they can contain useful information. Emerging economies have been slow in taking advantage of this stored internet data (Carriere-Swallow & Labbe 2010).A case in point is South Africa which has not exploited this data to service policy makers with timely data. As of 2019 the World Bank's data on individual internet penetration by country stated that South Africa had 68% of internet penetration, which was only at 7% in 2004. By 2020 it had risen by two percentage points, 70%. This rapid growth in internet usage serves as an incentive to explore the possibilities of internet data to explore correlations with some economic activities, specifically unemployment, in South Africa. This leaves us with the question: Could a range of labour market related Google searches be used as indicators of unemployment in South Africa?
+
+In this paper we will first explore the data gathered from two data sets, the Post-Apartheid Labour Market Series and Google search query. Next the results of the two data sets will be discussed as well as the data exploration, the paper ends with our analysis and discussion.
+
+## Data
+
+In order to answer our research question, we compare results from two datasets. The first dataset is the Post-Apartheid Labour Market Series (PALMS) which is a stacked cross sectional dataset of individuals of the Quarterly Labor Force Survey. That includes October, Household Surveys from 1994 to 1990, the bi-annual Labour Force Surveys from 2000-2007, including the smaller LFS pilot survey from February 2000, and the Quarterly Labour Force Surveys from 2008-2019. The second data set that we analyze is the Google Trends data (Google search query). The Google Trends data provides access to search queries for numerous subjects with the possibility of examining search queries for specific geolocations.The data is available from 2004 up to three days before one requests data for their interested subjects, but the data set is a sample of all the Google searches executed per day. For our analysis we explore a range of labour market related google search terms, such as "job", "jobs" and "vacancies". Other terms were also explored, such as "CV", "unemployment" and "employment", but they did not have as high pattern of correlation as the three words we chose to focus on in our analysis. These are similar if not the same labor market related searches that McLaren & Shanbhogue (2011) mention as search terms that could be used for nowcasting unemployment. They define nowcasting as monitoring and explaining current economic activity, rather than forecasting future economic activities. Even though McLaren and Shanbhogue use these terms to evaluate current economic activities, these terms could also be utilized to explain past economic activities.
+
+    In this paper the reference period is 2015-2019, even though the Google search query dates back to 2004 and the Post-Apartheid Labour Market Series data dates even further back, the chosen reference period is due to the late penetration of the internet in South Africa. According to the World Bank,  in 2004 only 7% of the South African population used the internet and by 2019 the percentage had risen to 68%. 
+
+There is a discrepancy between the way the two data sets are calculated, the PALMS data is calculated quarterly while the Google search data is calculated daily. In order to be able to compare these two datasets, we need to manipulate the google search data and smooth it over the period 2015-2019, see images 2 and 3 for the smoothed and unsmoothed indexes. It is important to note that the Google search query is dated rom January 2015 to December 2019 but the PALMS data is dated from January 2015 to the first quarter of 2019 (March).
+
+```{r, echo=FALSE}
+# A code chunk that exemplifies the data gathering process
+#read in dataset for PALMS household person level file (First Data set)
+unempl<-read_dta("PALMSforLabour2020.dta")
+n=dim(unempl)[1]
+n
+#cross tabulation of the empstat1 variable 
+tabyl(unempl$empstat1)
+
+#create unemployment indicator to calculate unemployment rate 
+unempl_red<-subset(unempl,empstat1!=0)
+unempl_red$unem_official2<-ifelse((unempl_red$empstat1==2) & (unempl_red$age>=18) & (unempl_red$age<65),1,0) 
+
+#create a subset data set starting at wave 50 (year 2015, Quarter1)
+cross_tab_un3<-unempl_red%>%
+  filter(wave>50)%>%
+  select(wave,unem_official2,wt=ceweight1) %>%
+  filter(!is.na(wave), !is.na(wt), !is.na(unem_official2)) %>%
+  group_by(wave,unem_official2) %>%
+  summarise(wt=sum(wt)) %>%
+  group_by(wave) %>%
+  mutate(wt = scales::percent(wt/sum(wt))) %>%
+  pivot_wider(., names_from=unem_official2, values_from=wt)
+
+#Read in vacancies search term CSV file from Google search trends
+vac<-read.csv("vacancies_Dec.csv",header = FALSE)
+#data cleaning
+vac2=vac[-c(1,2),]
+#colnames(vac2)<-c("year", "vacancies search index")
+head(vac2)
+V3=as.Date(vac2$V1)
+V4=as.numeric(vac2$V2)
+
+#Read in job search term CSV file from Google search trends
+job<-read.csv("job_Dec.csv",header = FALSE)
+#data cleaning 
+job2=job[-c(1,2),]
+#colnames(job2)<-c("year", "job search index")
+head(job2)
+J3=as.Date(job2$V1)
+J4=as.numeric(job2$V2)
+
+#Read in jobs search term CSV file from Google search trends
+jobs<-read.csv("jobs_Dec.csv",header = FALSE)
+#Data cleaning
+jobs2=jobs[-c(1,2),]
+#colnames(jobs2)<-c("year", "jobs search index")
+head(jobs2)
+Js3=as.Date(jobs2$V1)
+Js4=as.numeric(jobs2$V2)
+
+
+```
+
+```{r, include = FALSE}
+# Additional code chunks that repeat tasks or do basic things can be hidden
+```
+
+## Results
+
+In this section of the paper we will compare the
+
+### Data exploration
+
+Below we explore the key variables for the official unemployment dataset, the categorical variable **empstat1** has three categories which indicate the respondents economic status, where 0 means Not economically active, 1 means employed and 2 means unemployed. We use this variable to create the unemployment indicator which we use to calculate the unemployment rate as plotted in (see image3). The unemployment rate indicator variable **unem_official2** has two categories, were 0 means employed and 1 means unemployed.
+
+```{r}
+#exploration of the official unemployment dataset
+#cross tabulation of the empstat1 variable 
+tabyl(unempl$empstat1)
+
+#cross tabulation of the unemployment indicator variable
+tabyl(unempl_red$unem_official2)
+```
+
+```{r}
+# What happens here depends on the specific project
+```
+
+### Analysis
+
+To be able to explore the labor market related google search terms and compare how correlated they are to the official unemployment rate, we first need to smooth the google search queries. Here below we can see the unsmoothed index:
+
+```{r, echo=FALSE}
+#Plot of unsmoothed Google search hits
+##unsmoothed plot for vacancies search term
+vac_unsmoothed<-ggplot(data=vac2, aes(x=V3,y=V4))+
+  geom_line(colour="green")+
+  xlab('Time')+ylab('Search hits for "vacancies"') +
+  ggtitle("Google search hits for vacancies (unsmoothed): 2015-2019")
+
+##unsmoothed plot for job search term
+job_unsmoothed<-ggplot(data=job2, aes(x=J3,y=J4))+ geom_line(colour="red") +
+  xlab('Time')+ylab('Search hits for "job"')+
+  ggtitle("Google Search hits for job (unsmoothed):2015-2019")
+
+##unsmoothed plot for jobs search term
+jobs_unsmoothed<-ggplot(data=jobs2, aes(x=Js3,y=Js4))+ geom_line(colour="darkblue") +
+  xlab('Time')+ylab('Search hits for "jobs"')+
+  ggtitle("Google Search hits for jobs (unsmoothed):2015-2019")
+
+##plots of unsmoothed graphs 
+grid.arrange(vac_unsmoothed,job_unsmoothed,jobs_unsmoothed)
+```
+
+**Image 1**: Three unsmoothed plots for the search terms "vacancies", "job", and "jobs" over the period 2015-2019
+
+A similar pattern is visible between the plots visible in image 1. It is clear that the hits for each of the search words move in a similar direction. However, these unsmoothed plots are not ideal for the analysis and comparison we aim to carry out. Next we will examine the smoothed index.
+
+```{r, echo=FALSE}
+# Plot of smoothed Google search hits
+#smoothing for vacancies search term plot
+vac_smooth<-ggplot(data=vac2, aes(x=V3,y=V4))+
+ xlab('Time')+ylab('Search hits for "vacancies"') +
+  geom_smooth(method="loess",span=0.2,se=FALSE, colour="green") + 
+  ggtitle("Google search hits for vacancies: 2015-2019")
+
+##smoothed Job search term plot
+job_smooth<-ggplot(data=job2, aes(x=J3,y=J4))+
+  geom_smooth(span=0.2,se=FALSE, colour="red") + 
+  xlab('Time')+ylab('Search hits for "Job"')+
+  ggtitle("Google Search hits for Job: 2015-2019")
+
+##smoothing for jobs search term
+jobs_smooth<-ggplot(data=jobs2, aes(x=Js3,y=Js4)) +
+  geom_smooth(span=0.2,se=FALSE, colour="darkblue") + 
+  xlab('Time')+ylab('Search hits for "Jobs"')+
+  ggtitle("Google Search hits for Jobs: 2015-2019")
+
+##plot of smoothed graphs 
+grid.arrange(vac_smooth,job_smooth,jobs_smooth)
+
+
+```
+
+**Image 2**: Three smoothed plots for the search terms "vacancies", "job", and "jobs" over the period 2015-2019.
+
+After smoothing the index over our reference period, it is easier to analyse the search terms over time when working with the plots in image 2. The same pattern appears as in image 1, where it is clear that the hits move in a similar direction.
+
+```{r, echo=FALSE}
+# Plot of Official quarterly unemployment rate for South Africa: 2015-2019
+##smmothed for wave>50
+colnames(cross_tab_un3)<-c("wave","empl","unemplv")
+cross_tab_un3$unemplv<-as.numeric(gsub("[\\%,]","",cross_tab_un3$unemplv))
+ggplot(cross_tab_un3,aes(x=wave,y=unemplv))+
+  xlab('waves: quarters per year (2015-2019)')+ylab('unemployment rate')+
+  geom_smooth(method="loess",span=0.3,se=FALSE, colour="purple")+
+  ggtitle("Official quarterly unemployment rate for South Africa: 2015-2019")
+
+```
+
+**Image 3**. Official quarterly unemployment rate in South Africa 2015-2019
+
+Image 3 shows the official quarterly unemployment rate for South Africa from 2015 to 2019. It
+
+```{r}
+# Plot combining all (if possible)
+```
+
+By examining the pattern and direction of the Google search hits and the Official quarterly unemployment rate, it is apparent that...
+
+## Discussion
+
+There are some limitations to using internet search data. There is little information about the user thus it is difficult to determine the real reason for different search queries. Users could be searching for labor related information on Google if they are in need of employment, they could also be searching due to their curiosity or other engagements.
+
+## References
